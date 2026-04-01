@@ -5,6 +5,13 @@ struct SettingsView: View {
     @State private var loadError: String?
     @State private var saving = false
 
+    // NeMo install state
+    @State private var nemoInstalled: Bool?
+    @State private var nemoChecking = false
+    @State private var nemoInstalling = false
+    @State private var nemoInstallStatus = ""
+    @State private var nemoInstallError: String?
+
     private let hotkeys = ["f1","f2","f3","f4","f5","f6","f7","f8","f9","f10","f11","f12"]
 
     private let openaiModels = [
@@ -93,7 +100,12 @@ struct SettingsView: View {
             aboutTab.tabItem { Label("About", systemImage: "info.circle") }
         }
         .frame(width: 460, height: 380)
-        .task { await loadConfig() }
+        .task {
+            await loadConfig()
+            if config.apiProvider == "nemo" {
+                await checkNemoStatus()
+            }
+        }
     }
 
     // MARK: - General
@@ -126,42 +138,136 @@ struct SettingsView: View {
                     Text("OpenAI").tag("openai")
                     Text("NeMo (Local)").tag("nemo")
                 }
+                .onChange(of: config.apiProvider) { _, newValue in
+                    if newValue == "nemo" { Task { await checkNemoStatus() } }
+                }
             }
 
             if config.apiProvider == "openai" {
-                GroupBox("Credentials") {
-                    SecureField("API Key", text: $config.apiKey)
-                        .textFieldStyle(.roundedBorder)
-                    Picker("Model", selection: $config.openaiModel) {
-                        ForEach(openaiModels, id: \.self) { Text($0).tag($0) }
-                    }
-                    Picker("Language", selection: $config.openaiLanguage) {
-                        ForEach(openaiLanguages, id: \.0) { code, name in
-                            Text(name).tag(code)
-                        }
-                    }
-                }
+                openaiSettings
             } else {
-                GroupBox("Model") {
-                    HStack {
-                        Text("parakeet-tdt-0.6b-v3")
-                            .font(.body)
-                        Spacer()
-                    }
-                    Text("Runs fully on-device. No API key required. Model downloads automatically on first use (~1.2 GB).")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Picker("Language", selection: $config.nemoLanguage) {
-                        ForEach(nemoLanguages, id: \.0) { code, name in
-                            Text(name).tag(code)
-                        }
-                    }
-                }
+                nemoSettings
             }
 
             saveButton
         }
         .padding()
+    }
+
+    private var openaiSettings: some View {
+        GroupBox("Credentials") {
+            SecureField("API Key", text: $config.apiKey)
+                .textFieldStyle(.roundedBorder)
+            Picker("Model", selection: $config.openaiModel) {
+                ForEach(openaiModels, id: \.self) { Text($0).tag($0) }
+            }
+            Picker("Language", selection: $config.openaiLanguage) {
+                ForEach(openaiLanguages, id: \.0) { code, name in
+                    Text(name).tag(code)
+                }
+            }
+        }
+    }
+
+    private var nemoSettings: some View {
+        GroupBox("NeMo Toolkit") {
+            if nemoChecking {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Checking NeMo status…")
+                        .foregroundStyle(.secondary)
+                }
+            } else if nemoInstalled == true {
+                // NeMo is installed — show normal settings
+                HStack {
+                    Text("parakeet-tdt-0.6b-v3")
+                        .font(.body)
+                    Spacer()
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+                Text("Runs fully on-device. No API key required. Model downloads automatically on first use (~1.2 GB).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Picker("Language", selection: $config.nemoLanguage) {
+                    ForEach(nemoLanguages, id: \.0) { code, name in
+                        Text(name).tag(code)
+                    }
+                }
+            } else if nemoInstalling {
+                // Installation in progress
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Installing NeMo…")
+                            .font(.headline)
+                    }
+                    Text(nemoInstallStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .truncationMode(.head)
+                }
+            } else {
+                // Not installed — show install prompt
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("NeMo is not installed.")
+                        .font(.headline)
+                    Text("To use local AI transcription, the NeMo toolkit needs to be downloaded (~2 GB). This only happens once.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if let error = nemoInstallError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+
+                    Button("Install NeMo \u{2014} Free") {
+                        Task { await startNemoInstall() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+        }
+    }
+
+    // MARK: - NeMo helpers
+
+    private func checkNemoStatus() async {
+        nemoChecking = true
+        defer { nemoChecking = false }
+        do {
+            let status = try await APIClient.shared.fetchNemoStatus()
+            nemoInstalled = status.installed
+        } catch {
+            nemoInstalled = nil
+        }
+    }
+
+    private func startNemoInstall() async {
+        nemoInstalling = true
+        nemoInstallError = nil
+        nemoInstallStatus = "Starting installation…"
+
+        do {
+            let success = try await APIClient.shared.installNemo { line in
+                Task { @MainActor in
+                    nemoInstallStatus = line
+                }
+            }
+            nemoInstalling = false
+            if success {
+                nemoInstalled = true
+                // Persist provider now that install succeeded
+                await saveConfig()
+            } else {
+                nemoInstallError = "Installation failed. Check logs and try again."
+            }
+        } catch {
+            nemoInstalling = false
+            nemoInstallError = "Installation failed: \(error.localizedDescription)"
+        }
     }
 
     // MARK: - Sounds
@@ -230,7 +336,12 @@ struct SettingsView: View {
         saving = true
         defer { saving = false }
         do {
-            try await APIClient.shared.saveConfig(config)
+            // Don't persist nemo as provider unless it's actually installed
+            var toSave = config
+            if toSave.apiProvider == "nemo" && nemoInstalled != true {
+                toSave.apiProvider = "openai"
+            }
+            try await APIClient.shared.saveConfig(toSave)
             loadError = nil
         } catch {
             loadError = "Failed to save"

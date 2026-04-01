@@ -8,6 +8,7 @@ private let logger = Logger(subsystem: "com.findmyvoice", category: "hotkey")
 struct FindMyVoiceApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @Environment(\.openWindow) private var openWindow
+    @State private var nemoWarning = false
 
     var body: some Scene {
         MenuBarExtra {
@@ -17,11 +18,19 @@ struct FindMyVoiceApp: App {
                     .padding(.horizontal, 8)
                     .padding(.top, 4)
 
+                if nemoWarning {
+                    Divider()
+                    Label("NeMo not installed — reinstall via Settings", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 8)
+                }
+
                 Divider()
 
-                Button("Settings…") { 
+                Button("Settings…") {
                     openWindow(id: "settings")
-                    NSApp.activate(ignoringOtherApps: true) // Bring app to foreground when opening setting
+                    NSApp.activate(ignoringOtherApps: true)
                 }
 
                 Divider()
@@ -30,6 +39,7 @@ struct FindMyVoiceApp: App {
                     .keyboardShortcut("q", modifiers: .command)
             }
             .padding(.vertical, 4)
+            .task { await checkNemoOnLaunch() }
         } label: {
             Image(systemName: appDelegate.isRecording ? "mic.fill" : "mic")
         }
@@ -39,6 +49,19 @@ struct FindMyVoiceApp: App {
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
+    }
+
+    private func checkNemoOnLaunch() async {
+        // Wait briefly for backend to be ready
+        try? await Task.sleep(for: .seconds(2))
+        do {
+            let config = try await APIClient.shared.fetchConfig()
+            guard config.apiProvider == "nemo" else { return }
+            let status = try await APIClient.shared.fetchNemoStatus()
+            await MainActor.run { nemoWarning = !status.installed }
+        } catch {
+            // Backend not ready yet — ignore
+        }
     }
 }
 

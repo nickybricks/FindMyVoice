@@ -64,4 +64,45 @@ final class APIClient {
         let body = String(data: data, encoding: .utf8) ?? ""
         logger.info("POST /stop → \(http?.statusCode ?? -1) — \(body)")
     }
+
+    // MARK: - NeMo
+
+    func fetchNemoStatus() async throws -> NemoStatus {
+        logger.info("GET /nemo/status")
+        let (data, response) = try await URLSession.shared.data(from: base.appendingPathComponent("nemo/status"))
+        let http = response as? HTTPURLResponse
+        logger.info("GET /nemo/status → \(http?.statusCode ?? -1)")
+        return try JSONDecoder().decode(NemoStatus.self, from: data)
+    }
+
+    /// Streams SSE lines from POST /nemo/install. Calls `onLine` for each data line.
+    /// Returns true if install succeeded (__DONE__), false on error.
+    func installNemo(onLine: @escaping (String) -> Void) async throws -> Bool {
+        logger.info("POST /nemo/install — starting SSE install stream")
+        var request = URLRequest(url: base.appendingPathComponent("nemo/install"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 600 // 10 min for large download
+
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        let http = response as? HTTPURLResponse
+        logger.info("POST /nemo/install → \(http?.statusCode ?? -1)")
+
+        for try await line in bytes.lines {
+            // SSE format: "data: <content>"
+            guard line.hasPrefix("data: ") else { continue }
+            let content = String(line.dropFirst(6))
+
+            if content == "__DONE__" {
+                logger.info("NeMo install completed successfully")
+                return true
+            }
+            if content.hasPrefix("__ERROR__") {
+                logger.error("NeMo install failed: \(content)")
+                onLine(content)
+                return false
+            }
+            onLine(content)
+        }
+        return false
+    }
 }

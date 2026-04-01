@@ -45,3 +45,7 @@ struct AppConfig: Codable, Equatable {
 struct BackendStatus: Codable {
     let recording: Bool
 }
+
+struct NemoStatus: Codable {
+    let installed: Bool
+}

@@ -9,13 +9,14 @@ handled by the Swift app.
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
 
 import numpy as np
 import sounddevice as sd
-from flask import Flask, jsonify, request
+from flask import Flask, Response, jsonify, request
 from scipy.io import wavfile
 from openai import OpenAI
 
@@ -294,6 +295,58 @@ def api_start():
 def api_stop():
     ok = stop_recording()
     return jsonify({"recording": False, "stopped": ok})
+
+
+# ---------------------------------------------------------------------------
+# NeMo install management
+# ---------------------------------------------------------------------------
+
+_nemo_install_lock = threading.Lock()
+_nemo_installing = False
+
+
+@app.get("/nemo/status")
+def nemo_status():
+    try:
+        import nemo.collections.asr  # noqa: F401
+        return jsonify({"installed": True})
+    except ImportError:
+        return jsonify({"installed": False})
+
+
+@app.post("/nemo/install")
+def nemo_install():
+    global _nemo_installing
+    with _nemo_install_lock:
+        if _nemo_installing:
+            return jsonify({"error": "Installation already in progress"}), 409
+        _nemo_installing = True
+
+    def generate():
+        global _nemo_installing
+        try:
+            python = sys.executable
+            proc = subprocess.Popen(
+                [python, "-m", "pip", "install", "nemo_toolkit[asr]"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            for line in proc.stdout:
+                yield f"data: {line.rstrip()}\n\n"
+            proc.wait()
+            if proc.returncode == 0:
+                yield "data: __DONE__\n\n"
+            else:
+                yield f"data: __ERROR__ pip exited with code {proc.returncode}\n\n"
+        except Exception as e:
+            yield f"data: __ERROR__ {e}\n\n"
+        finally:
+            with _nemo_install_lock:
+                _nemo_installing = False
+
+    return Response(generate(), mimetype="text/event-stream")
 
 
 # ---------------------------------------------------------------------------
