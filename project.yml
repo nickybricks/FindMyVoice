@@ -1,0 +1,24 @@
+name: FindMyVoice
+options:
+  deploymentTarget:
+    macOS: "14.0"
+  bundleIdPrefix: com.findmyvoice
+settings:
+  SWIFT_VERSION: "5.9"
+  MACOSX_DEPLOYMENT_TARGET: "14.0"
+targets:
+  FindMyVoice:
+    type: application
+    platform: macOS
+    sources:
+      - path: FindMyVoiceApp
+        excludes:
+          - "*.entitlements"
+          - "Info.plist"
+    settings:
+      INFOPLIST_FILE: FindMyVoiceApp/Info.plist
+      CODE_SIGN_ENTITLEMENTS: FindMyVoiceApp/FindMyVoice.entitlements
+      CODE_SIGN_IDENTITY: "-"
+      PRODUCT_BUNDLE_IDENTIFIER: com.findmyvoice.app
+      PRODUCT_NAME: FindMyVoice
+      GENERATE_INFOPLIST_FILE: false
