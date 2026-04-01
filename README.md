@@ -1,6 +1,6 @@
 # FindMyVoice
 
-A lightweight macOS SuperWhisper clone — global hotkey voice-to-text that pastes into any app.
+A lightweight macOS app — global hotkey voice-to-text that pastes into any app.
 
 ## Requirements
 
