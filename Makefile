@@ -1,4 +1,4 @@
-.PHONY: setup run-backend build-app run-all clean
+.PHONY: setup run-backend build-app install run-all clean
 
 setup:
 	cd backend && chmod +x setup.sh && ./setup.sh
@@ -8,6 +8,10 @@ run-backend:
 
 build-app:
 	xcodebuild -project FindMyVoice.xcodeproj -scheme FindMyVoice -configuration Release build
+
+install:
+	xcodebuild -project FindMyVoice.xcodeproj -scheme FindMyVoice -configuration Release build
+	cp -R "$$(xcodebuild -project FindMyVoice.xcodeproj -scheme FindMyVoice -configuration Release -showBuildSettings 2>/dev/null | grep ' BUILT_PRODUCTS_DIR' | awk '{print $$NF}')/FindMyVoice.app" /Applications/FindMyVoice.app
 
 run-all:
 	make run-backend &

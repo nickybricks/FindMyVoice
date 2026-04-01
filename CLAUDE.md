@@ -66,6 +66,22 @@ gh release create v{VERSION} --title "v{VERSION}: {Brief description}" --notes "
 - The release title should match the commit message format: `v{VERSION}: {Brief description}`
 
 
+## Build & Install
+
+After any Swift code change, the app must be rebuilt and reinstalled:
+
+```bash
+make install
+```
+
+This builds a Release binary and copies it to `/Applications/FindMyVoice.app`, replacing any existing version.
+
+After running `make install`:
+1. Quit the running app (click the menu bar icon → Quit)
+2. Relaunch from `/Applications/FindMyVoice.app`
+
+Do **not** run the app directly from the Xcode build folder — always use the installed copy in `/Applications`.
+
 ## Tech Stack
 - Python: sounddevice, numpy, scipy, openai, flask
 - Swift: SwiftUI, MenuBarExtra (macOS 14+)
