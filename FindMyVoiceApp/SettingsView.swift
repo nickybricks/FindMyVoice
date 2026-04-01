@@ -6,18 +6,76 @@ struct SettingsView: View {
     @State private var saving = false
 
     private let hotkeys = ["f1","f2","f3","f4","f5","f6","f7","f8","f9","f10","f11","f12"]
-    private let languages = [
+
+    private let openaiModels = [
+        "whisper-1",
+        "whisper-large-v3",
+        "whisper-large-v3-turbo",
+    ]
+
+    private let openaiLanguages: [(String, String)] = [
         ("auto", "Auto-detect"),
         ("en", "English"),
-        ("es", "Spanish"),
         ("fr", "French"),
         ("de", "German"),
+        ("es", "Spanish"),
         ("it", "Italian"),
         ("pt", "Portuguese"),
+        ("nl", "Dutch"),
+        ("pl", "Polish"),
+        ("ru", "Russian"),
+        ("uk", "Ukrainian"),
+        ("cs", "Czech"),
+        ("sk", "Slovak"),
+        ("ro", "Romanian"),
+        ("hu", "Hungarian"),
+        ("bg", "Bulgarian"),
+        ("hr", "Croatian"),
+        ("da", "Danish"),
+        ("et", "Estonian"),
+        ("fi", "Finnish"),
+        ("el", "Greek"),
+        ("lv", "Latvian"),
+        ("lt", "Lithuanian"),
+        ("sl", "Slovenian"),
+        ("sv", "Swedish"),
+        ("tr", "Turkish"),
+        ("ar", "Arabic"),
+        ("hi", "Hindi"),
         ("ja", "Japanese"),
-        ("zh", "Chinese"),
         ("ko", "Korean"),
+        ("zh", "Chinese"),
     ]
+
+    private let nemoLanguages: [(String, String)] = [
+        ("auto", "Auto-detect"),
+        ("en", "English"),
+        ("bg", "Bulgarian"),
+        ("hr", "Croatian"),
+        ("cs", "Czech"),
+        ("da", "Danish"),
+        ("nl", "Dutch"),
+        ("et", "Estonian"),
+        ("fi", "Finnish"),
+        ("fr", "French"),
+        ("de", "German"),
+        ("el", "Greek"),
+        ("hu", "Hungarian"),
+        ("it", "Italian"),
+        ("lv", "Latvian"),
+        ("lt", "Lithuanian"),
+        ("mt", "Maltese"),
+        ("pl", "Polish"),
+        ("pt", "Portuguese"),
+        ("ro", "Romanian"),
+        ("ru", "Russian"),
+        ("sk", "Slovak"),
+        ("sl", "Slovenian"),
+        ("es", "Spanish"),
+        ("sv", "Swedish"),
+        ("uk", "Ukrainian"),
+    ]
+
     private let systemSounds: [String] = {
         let soundsDir = "/System/Library/Sounds"
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: soundsDir) else { return [] }
@@ -34,7 +92,7 @@ struct SettingsView: View {
             soundsTab.tabItem { Label("Sounds", systemImage: "speaker.wave.2") }
             aboutTab.tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 460, height: 340)
+        .frame(width: 460, height: 380)
         .task { await loadConfig() }
     }
 
@@ -45,14 +103,6 @@ struct SettingsView: View {
             GroupBox("Hotkey") {
                 Picker("Trigger key", selection: $config.hotkey) {
                     ForEach(hotkeys, id: \.self) { Text($0.uppercased()).tag($0) }
-                }
-            }
-
-            GroupBox("Language") {
-                Picker("Transcription language", selection: $config.language) {
-                    ForEach(languages, id: \.0) { code, name in
-                        Text(name).tag(code)
-                    }
                 }
             }
 
@@ -74,20 +124,39 @@ struct SettingsView: View {
             GroupBox("Provider") {
                 Picker("Provider", selection: $config.apiProvider) {
                     Text("OpenAI").tag("openai")
-                    Text("Custom").tag("custom")
-                }
-
-                if config.apiProvider == "custom" {
-                    TextField("Base URL", text: $config.apiBaseUrl)
-                        .textFieldStyle(.roundedBorder)
+                    Text("NeMo (Local)").tag("nemo")
                 }
             }
 
-            GroupBox("Credentials") {
-                SecureField("API Key", text: $config.apiKey)
-                    .textFieldStyle(.roundedBorder)
-                TextField("Model", text: $config.model)
-                    .textFieldStyle(.roundedBorder)
+            if config.apiProvider == "openai" {
+                GroupBox("Credentials") {
+                    SecureField("API Key", text: $config.apiKey)
+                        .textFieldStyle(.roundedBorder)
+                    Picker("Model", selection: $config.openaiModel) {
+                        ForEach(openaiModels, id: \.self) { Text($0).tag($0) }
+                    }
+                    Picker("Language", selection: $config.openaiLanguage) {
+                        ForEach(openaiLanguages, id: \.0) { code, name in
+                            Text(name).tag(code)
+                        }
+                    }
+                }
+            } else {
+                GroupBox("Model") {
+                    HStack {
+                        Text("parakeet-tdt-0.6b-v3")
+                            .font(.body)
+                        Spacer()
+                    }
+                    Text("Runs fully on-device. No API key required. Model downloads automatically on first use (~1.2 GB).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker("Language", selection: $config.nemoLanguage) {
+                        ForEach(nemoLanguages, id: \.0) { code, name in
+                            Text(name).tag(code)
+                        }
+                    }
+                }
             }
 
             saveButton

@@ -46,100 +46,141 @@ struct FindMyVoiceApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var backendProcess: Process?
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
+    private var hotkeyRef: EventHotKeyRef?
     @Published var isRecording = false
 
     private var currentHotkey: String = "f5"
     private var statusTimer: Timer?
+    private var lastHotkeyTime: Date = .distantPast
+
+    /// Shared reference for the Carbon callback (which can't capture self).
+    static weak var shared: AppDelegate?
+
+    // Unique hot key ID
+    private static let hotkeyID = EventHotKeyID(signature: OSType(0x464D5648), // "FMVH"
+                                                  id: 1)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        requestAccessibilityIfNeeded()
+        logger.info("applicationDidFinishLaunching — starting setup")
+        AppDelegate.shared = self
         startBackend()
         loadHotkeyFromConfig()
         installHotkeyMonitor()
         startStatusPolling()
+        logger.info("applicationDidFinishLaunching — setup complete")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-        }
-        if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
-        }
+        unregisterHotkey()
         statusTimer?.invalidate()
         stopBackend()
     }
 
-    // MARK: - Accessibility
-
-    private func requestAccessibilityIfNeeded() {
-        let trusted = AXIsProcessTrustedWithOptions(
-            [kAXTrustedCheckOptionPrompt.takeRetainedValue(): true] as CFDictionary
-        )
-        logger.info("Accessibility trusted: \(trusted)")
-        if !trusted {
-            logger.warning("Accessibility permission NOT granted — hotkey will not work")
-        }
-    }
-
-    // MARK: - Global hotkey
+    // MARK: - Global hotkey (Carbon RegisterEventHotKey)
 
     private func loadHotkeyFromConfig() {
+        logger.info("loadHotkeyFromConfig — current default is '\(self.currentHotkey)'")
         Task {
             if let config = try? await APIClient.shared.fetchConfig() {
-                await MainActor.run { self.currentHotkey = config.hotkey }
+                let newHotkey = config.hotkey
+                logger.info("Config loaded — hotkey: '\(newHotkey)'")
+                await MainActor.run {
+                    if self.currentHotkey != newHotkey {
+                        self.currentHotkey = newHotkey
+                        self.unregisterHotkey()
+                        self.registerHotkey()
+                    }
+                }
+            } else {
+                logger.warning("Failed to load config — sticking with default '\(self.currentHotkey)'")
             }
         }
     }
 
     private func installHotkeyMonitor() {
-        // Use CGEventTap at HID level to intercept F-keys before media key remapping
-        let eventMask: CGEventMask = (1 << CGEventType.keyDown.rawValue)
+        logger.info("installHotkeyMonitor — using Carbon RegisterEventHotKey")
 
-        // Store self as unmanaged pointer for the C callback
-        let refcon = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        // Install Carbon event handler for hot key events
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
+                                      eventKind: UInt32(kEventHotKeyPressed))
 
-        guard let tap = CGEvent.tapCreate(
-            tap: .cghidEventTap,
-            place: .headInsertEventTap,
-            options: .listenOnly,
-            eventsOfInterest: eventMask,
-            callback: { _, _, event, refcon -> Unmanaged<CGEvent>? in
-                guard let refcon else { return Unmanaged.passRetained(event) }
-                let delegate = Unmanaged<AppDelegate>.fromOpaque(refcon).takeUnretainedValue()
-                let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
-                let targetKeyCode = AppDelegate.keyCodeForHotkey(delegate.currentHotkey)
-                logger.debug("Key event received: keyCode=\(keyCode), target=\(targetKeyCode)")
-                if keyCode == targetKeyCode {
-                    logger.info("Hotkey matched! Toggling recording.")
-                    delegate.handleHotkeyPress()
+        let handlerStatus = InstallEventHandler(
+            GetApplicationEventTarget(),
+            { _, event, _ -> OSStatus in
+                var hotkeyID = EventHotKeyID()
+                let err = GetEventParameter(event,
+                                            EventParamName(kEventParamDirectObject),
+                                            EventParamType(typeEventHotKeyID),
+                                            nil,
+                                            MemoryLayout<EventHotKeyID>.size,
+                                            nil,
+                                            &hotkeyID)
+                guard err == noErr else {
+                    logger.error("Failed to get hot key ID from event: \(err)")
+                    return err
                 }
-                return Unmanaged.passRetained(event)
+
+                if hotkeyID.id == AppDelegate.hotkeyID.id {
+                    logger.info("Carbon hotkey fired — toggling recording")
+                    DispatchQueue.main.async {
+                        guard let delegate = AppDelegate.shared else {
+                            logger.error("AppDelegate.shared is nil — cannot handle hotkey")
+                            return
+                        }
+                        // Debounce: ignore key-repeat (must be >0.5s since last press)
+                        let now = Date()
+                        guard now.timeIntervalSince(delegate.lastHotkeyTime) > 0.5 else {
+                            logger.info("Hotkey debounced — ignoring repeat")
+                            return
+                        }
+                        delegate.lastHotkeyTime = now
+                        delegate.handleHotkeyPress()
+                    }
+                    return noErr
+                }
+                return OSStatus(eventNotHandledErr)
             },
-            userInfo: refcon
-        ) else {
-            logger.error("Failed to create event tap — Accessibility permission is required")
-            DispatchQueue.main.async {
-                let alert = NSAlert()
-                alert.messageText = "Accessibility Permission Required"
-                alert.informativeText = "FindMyVoice needs Accessibility permission for the global hotkey.\n\nGo to System Settings → Privacy & Security → Accessibility and enable FindMyVoice."
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: "Open System Settings")
-                alert.addButton(withTitle: "OK")
-                if alert.runModal() == .alertFirstButtonReturn {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-                }
-            }
+            1,
+            &eventType,
+            nil,
+            nil
+        )
+
+        if handlerStatus != noErr {
+            logger.error("InstallEventHandler failed: \(handlerStatus)")
             return
         }
+        logger.info("Carbon event handler installed")
 
-        self.eventTap = tap
-        self.runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        logger.info("Global hotkey monitor installed (CGEventTap) — listening for \(self.currentHotkey)")
+        registerHotkey()
+    }
+
+    private func registerHotkey() {
+        let keyCode = AppDelegate.keyCodeForHotkey(currentHotkey)
+        var hotkeyID = AppDelegate.hotkeyID
+        var ref: EventHotKeyRef?
+
+        let status = RegisterEventHotKey(UInt32(keyCode),
+                                          0, // no modifiers
+                                          hotkeyID,
+                                          GetApplicationEventTarget(),
+                                          0,
+                                          &ref)
+
+        if status == noErr {
+            hotkeyRef = ref
+            logger.info("Registered hotkey '\(self.currentHotkey)' (keyCode=\(keyCode)) — no modifiers")
+        } else {
+            logger.error("RegisterEventHotKey failed: \(status)")
+        }
+    }
+
+    private func unregisterHotkey() {
+        if let ref = hotkeyRef {
+            UnregisterEventHotKey(ref)
+            hotkeyRef = nil
+            logger.info("Unregistered previous hotkey")
+        }
     }
 
     private func handleHotkeyPress() {
@@ -189,7 +230,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 }
                 // Also refresh hotkey in case user changed it in settings
                 if let config = try? await APIClient.shared.fetchConfig() {
-                    await MainActor.run { self.currentHotkey = config.hotkey }
+                    await MainActor.run {
+                        if self.currentHotkey != config.hotkey {
+                            self.currentHotkey = config.hotkey
+                            self.unregisterHotkey()
+                            self.registerHotkey()
+                        }
+                    }
                 }
             }
         }
@@ -197,23 +244,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     // MARK: - Backend lifecycle
 
-    private func findProjectRoot() -> String? {
+    /// Returns the directory containing `backend/findmyvoice_core.py`.
+    private func findBackendRoot() -> String? {
         let fm = FileManager.default
-        let bundle = Bundle.main
+        let script = "backend/findmyvoice_core.py"
 
-        // 1. Check inside app bundle Resources
-        if let resourcePath = bundle.resourcePath {
-            let script = "\(resourcePath)/backend/findmyvoice_core.py"
-            if fm.fileExists(atPath: script) {
+        // 1. Inside app bundle Resources (bundled by make install)
+        if let resourcePath = Bundle.main.resourcePath {
+            if fm.fileExists(atPath: "\(resourcePath)/\(script)") {
+                logger.info("Found backend in app bundle Resources")
                 return resourcePath
             }
         }
 
-        // 2. Walk up from the .app bundle looking for backend/findmyvoice_core.py
-        var url = URL(fileURLWithPath: bundle.bundlePath).deletingLastPathComponent()
+        // 2. ~/.findmyvoice/backend/ (user-installed)
+        let homeBackend = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".findmyvoice").path
+        if fm.fileExists(atPath: "\(homeBackend)/\(script)") {
+            logger.info("Found backend in ~/.findmyvoice/")
+            return homeBackend
+        }
+
+        // 3. Walk up from bundle (dev builds run from build dir)
+        var url = URL(fileURLWithPath: Bundle.main.bundlePath).deletingLastPathComponent()
         for _ in 0..<10 {
-            let script = url.appendingPathComponent("backend/findmyvoice_core.py").path
-            if fm.fileExists(atPath: script) {
+            if fm.fileExists(atPath: url.appendingPathComponent(script).path) {
+                logger.info("Found backend walking up from bundle: \(url.path)")
                 return url.path
             }
             let parent = url.deletingLastPathComponent()
@@ -224,26 +280,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         return nil
     }
 
+    private func findPython(projectRoot: String) -> String {
+        let candidates = [
+            "\(projectRoot)/backend/venv/bin/python",
+            "\(FileManager.default.homeDirectoryForCurrentUser.path)/.findmyvoice/backend/venv/bin/python",
+        ]
+        for path in candidates {
+            if FileManager.default.fileExists(atPath: path) {
+                return path
+            }
+        }
+        return "/usr/bin/python3"
+    }
+
     private func startBackend() {
-        guard let projectRoot = findProjectRoot() else {
-            logger.error("Could not find findmyvoice_core.py")
+        guard let backendRoot = findBackendRoot() else {
+            logger.error("Could not find findmyvoice_core.py — backend will not start")
             return
         }
 
-        let scriptPath = "\(projectRoot)/backend/findmyvoice_core.py"
-        let venvPython = "\(projectRoot)/backend/venv/bin/python"
-        let pythonPath = FileManager.default.fileExists(atPath: venvPython) ? venvPython : "/usr/bin/python3"
+        let scriptPath = "\(backendRoot)/backend/findmyvoice_core.py"
+        let pythonPath = findPython(projectRoot: backendRoot)
+        logger.info("Starting backend: \(pythonPath) \(scriptPath)")
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: pythonPath)
         process.arguments = [scriptPath]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+
+        // Log backend output to system log for debugging
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            if let line = String(data: handle.availableData, encoding: .utf8), !line.isEmpty {
+                logger.info("backend: \(line)")
+            }
+        }
 
         do {
             try process.run()
             backendProcess = process
-            logger.info("Backend started (pid \(process.processIdentifier))")
+            logger.info("Backend started (pid \(process.processIdentifier), python=\(pythonPath))")
         } catch {
             logger.error("Failed to start backend: \(error)")
         }

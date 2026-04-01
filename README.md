@@ -18,16 +18,18 @@ make setup
 # 2. Add your API key
 # Edit ~/.findmyvoice/config.json and set "api_key"
 
-# 3. Run everything
-make run-all
+# 3. Build, install to /Applications, and launch
+make install
 ```
 
 ## Usage
 
 1. The app lives in your menu bar (mic icon).
-2. Press **F1** (default) to start recording.
-3. Press **F1** again to stop — audio is transcribed and pasted into the active app.
+2. Press **F5** (default) to start recording.
+3. Press **F5** again to stop — audio is transcribed and pasted into the active app.
 4. Open **Settings** from the menu bar icon to configure hotkey, API, sounds, etc.
+
+The Python backend is bundled inside the app and starts automatically — no need to run it separately.
 
 ## Project Structure
 
@@ -37,7 +39,7 @@ FindMyVoice/
 │   ├── findmyvoice_core.py
 │   ├── requirements.txt
 │   └── setup.sh
-├── FindMyVoiceApp/        # SwiftUI macOS app
+├── FindMyVoiceApp/           # SwiftUI macOS app
 │   ├── FindMyVoiceApp.swift
 │   ├── SettingsView.swift
 │   ├── APIClient.swift
@@ -60,7 +62,8 @@ macOS will prompt you to grant these on first use.
 | Target | Description |
 |--------|-------------|
 | `make setup` | Create venv and install Python dependencies |
-| `make run-backend` | Start the Python backend on localhost:7890 |
+| `make install` | Build app, bundle backend, install to /Applications, and launch |
+| `make run-backend` | Start the Python backend on localhost:7890 (standalone) |
 | `make build-app` | Build the SwiftUI app with xcodebuild |
 | `make run-all` | Start backend + build and launch the app |
 | `make clean` | Clean build artifacts |

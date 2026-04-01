@@ -1,8 +1,9 @@
 """FindMyVoice — lightweight voice-to-text backend.
 
-Records from the default mic, transcribes via OpenAI Whisper API, and pastes
-the result into the active app.  Exposes a local HTTP API on localhost:7890
-for the SwiftUI frontend.  Hotkey listening is handled by the Swift app.
+Records from the default mic, transcribes via OpenAI Whisper API or NVIDIA
+NeMo Parakeet (local), and pastes the result into the active app.  Exposes a
+local HTTP API on localhost:7890 for the SwiftUI frontend.  Hotkey listening is
+handled by the Swift app.
 """
 
 import json
@@ -28,9 +29,9 @@ CONFIG_PATH = CONFIG_DIR / "config.json"
 DEFAULT_CONFIG: dict = {
     "api_key": "",
     "api_provider": "openai",
-    "api_base_url": "https://api.openai.com/v1",
-    "model": "whisper-1",
-    "language": "en",
+    "openai_model": "whisper-1",
+    "openai_language": "auto",
+    "nemo_language": "auto",
     "hotkey": "f1",
     "sound_start": "Tink",
     "sound_stop": "Pop",
@@ -40,13 +41,49 @@ DEFAULT_CONFIG: dict = {
 }
 
 
+def _migrate(cfg: dict) -> tuple[dict, bool]:
+    """Migrate old config schema to new schema. Returns (cfg, changed)."""
+    changed = False
+
+    # provider: "custom" → "openai"
+    if cfg.get("api_provider") == "custom":
+        cfg["api_provider"] = "openai"
+        changed = True
+
+    # old "model" → "openai_model"
+    if "model" in cfg:
+        old_model = cfg.pop("model")
+        if "openai_model" not in cfg:
+            allowed = {"whisper-1", "whisper-large-v3", "whisper-large-v3-turbo"}
+            cfg["openai_model"] = old_model if old_model in allowed else "whisper-1"
+        changed = True
+
+    # old "language" → "openai_language"
+    if "language" in cfg:
+        old_lang = cfg.pop("language")
+        if "openai_language" not in cfg:
+            cfg["openai_language"] = old_lang
+        cfg.setdefault("nemo_language", "auto")
+        changed = True
+
+    # remove obsolete fields
+    for field in ("api_base_url",):
+        if field in cfg:
+            cfg.pop(field)
+            changed = True
+
+    return cfg, changed
+
+
 def load_config() -> dict:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH) as f:
             saved = json.load(f)
-        # Merge with defaults so new keys are always present
+        saved, changed = _migrate(saved)
         merged = {**DEFAULT_CONFIG, **saved}
+        if changed:
+            save_config(merged)
         return merged
     save_config(DEFAULT_CONFIG)
     return dict(DEFAULT_CONFIG)
@@ -171,17 +208,37 @@ def _transcribe_and_paste() -> None:
         os.unlink(tmp.name)
 
 
-def transcribe(wav_path: str) -> str:
+# ---------------------------------------------------------------------------
+# Transcription
+# ---------------------------------------------------------------------------
+
+_nemo_model = None
+
+
+def transcribe_nemo(audio_path: str, language: str) -> str:
+    global _nemo_model
+    try:
+        import nemo.collections.asr as nemo_asr
+    except ImportError:
+        return "[Error] NeMo is not installed. Run: pip install nemo_toolkit['asr']"
+
+    if _nemo_model is None:
+        _nemo_model = nemo_asr.models.ASRModel.from_pretrained("nvidia/parakeet-tdt-0.6b-v3")
+
+    output = _nemo_model.transcribe([audio_path])
+    return output[0].text
+
+
+def transcribe_openai(wav_path: str) -> str:
     api_key = config.get("api_key", "")
     if not api_key:
         print("[FindMyVoice] No API key configured.")
         return ""
 
-    base_url = config.get("api_base_url", "https://api.openai.com/v1")
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    client = OpenAI(api_key=api_key)
 
-    language = config.get("language", "en")
-    kwargs: dict = {"model": config.get("model", "whisper-1"), "file": open(wav_path, "rb")}
+    language = config.get("openai_language", "auto")
+    kwargs: dict = {"model": config.get("openai_model", "whisper-1"), "file": open(wav_path, "rb")}
     if language and language != "auto":
         kwargs["language"] = language
 
@@ -191,6 +248,14 @@ def transcribe(wav_path: str) -> str:
     except Exception as e:
         print(f"[FindMyVoice] Transcription error: {e}")
         return ""
+
+
+def transcribe(wav_path: str) -> str:
+    provider = config.get("api_provider", "openai")
+    if provider == "nemo":
+        language = config.get("nemo_language", "auto")
+        return transcribe_nemo(wav_path, language)
+    return transcribe_openai(wav_path)
 
 
 # ---------------------------------------------------------------------------

@@ -20,5 +20,7 @@
     <string>FindMyVoice needs microphone access to record your voice for transcription.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>FindMyVoice needs accessibility access to paste transcriptions into the active app.</string>
+    <key>NSInputMonitoringUsageDescription</key>
+    <string>FindMyVoice needs Input Monitoring access to detect the global hotkey.</string>
 </dict>
 </plist>
