@@ -81,6 +81,7 @@ struct AppConfig: Codable, Equatable {
     var hotkey: String
     var soundStart: String
     var soundStop: String
+    var soundMuted: Bool
     var autoPaste: Bool
     var autoCapitalize: Bool
     var autoPunctuate: Bool
@@ -99,6 +100,7 @@ struct AppConfig: Codable, Equatable {
         case hotkey
         case soundStart = "sound_start"
         case soundStop = "sound_stop"
+        case soundMuted = "sound_muted"
         case autoPaste = "auto_paste"
         case autoCapitalize = "auto_capitalize"
         case autoPunctuate = "auto_punctuate"
@@ -119,6 +121,7 @@ struct AppConfig: Codable, Equatable {
         hotkey         = try c.decodeIfPresent(String.self, forKey: .hotkey) ?? ""
         soundStart     = try c.decode(String.self, forKey: .soundStart)
         soundStop      = try c.decode(String.self, forKey: .soundStop)
+        soundMuted     = try c.decodeIfPresent(Bool.self, forKey: .soundMuted) ?? false
         autoPaste      = try c.decode(Bool.self, forKey: .autoPaste)
         autoCapitalize = try c.decode(Bool.self, forKey: .autoCapitalize)
         autoPunctuate  = try c.decode(Bool.self, forKey: .autoPunctuate)
@@ -131,7 +134,7 @@ struct AppConfig: Codable, Equatable {
 
     init(apiKey: String, apiProvider: String, openaiModel: String, openaiLanguage: String,
          nemoLanguage: String, hotkey: String, soundStart: String, soundStop: String,
-         autoPaste: Bool, autoCapitalize: Bool, autoPunctuate: Bool,
+         soundMuted: Bool = false, autoPaste: Bool, autoCapitalize: Bool, autoPunctuate: Bool,
          toggleRecording: HotkeyCombo = .defaultToggleRecording,
          cancelRecording: HotkeyCombo = .defaultCancelRecording,
          changeMode: HotkeyCombo = .defaultChangeMode,
@@ -145,6 +148,7 @@ struct AppConfig: Codable, Equatable {
         self.hotkey = hotkey
         self.soundStart = soundStart
         self.soundStop = soundStop
+        self.soundMuted = soundMuted
         self.autoPaste = autoPaste
         self.autoCapitalize = autoCapitalize
         self.autoPunctuate = autoPunctuate

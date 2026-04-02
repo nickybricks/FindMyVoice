@@ -1,5 +1,6 @@
 import SwiftUI
 import Carbon.HIToolbox
+import AppKit
 
 // MARK: - Shortcut Action ID
 
@@ -21,11 +22,21 @@ struct ConfigurationView: View {
     @State private var duplicateWarning: ShortcutAction?
     @State private var eventMonitor: Any?
 
+    private let systemSounds: [String] = {
+        let soundsDir = "/System/Library/Sounds"
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: soundsDir) else { return [] }
+        return files
+            .filter { $0.hasSuffix(".aiff") }
+            .map { $0.replacingOccurrences(of: ".aiff", with: "") }
+            .sorted()
+    }()
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 keyboardShortcutsSection
                 optionsSection
+                soundSection
             }
             .padding(24)
         }
@@ -122,13 +133,13 @@ struct ConfigurationView: View {
             if isRecording {
                 Text("Press shortcut...")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(DS.tertiary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.orange.opacity(0.1))
-                            .stroke(Color.orange.opacity(0.4), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: DS.radiusPill, style: .continuous)
+                            .fill(DS.tertiary.opacity(0.1))
+                            .stroke(DS.tertiary.opacity(0.4), lineWidth: 1)
                     )
             } else if shortcut.isEmpty {
                 Button {
@@ -140,7 +151,7 @@ struct ConfigurationView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            RoundedRectangle(cornerRadius: DS.radiusPill, style: .continuous)
                                 .fill(Color(NSColor.controlBackgroundColor))
                                 .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
                         )
@@ -312,6 +323,60 @@ struct ConfigurationView: View {
         }
     }
 
+    // MARK: - Recording Sounds
+
+    private var soundSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Recording Sounds")
+                .font(.headline)
+
+            SettingsCard {
+                VStack(spacing: 0) {
+                    SettingsToggleRow(title: "Mute all sounds", isOn: $config.soundMuted)
+
+                    Divider().padding(.leading, 16)
+
+                    VStack(spacing: 0) {
+                        soundPickerRow(label: "Start sound", selection: $config.soundStart)
+                        Divider().padding(.leading, 16)
+                        soundPickerRow(label: "Stop sound", selection: $config.soundStop)
+                    }
+                    .opacity(config.soundMuted ? 0.4 : 1)
+                    .disabled(config.soundMuted)
+                }
+            }
+        }
+    }
+
+    private func soundPickerRow(label: String, selection: Binding<String>) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Picker("", selection: selection) {
+                ForEach(systemSounds, id: \.self) { Text($0).tag($0) }
+            }
+            .labelsHidden()
+            .frame(width: 150)
+            .onChange(of: selection.wrappedValue) { _, newValue in
+                let url = URL(fileURLWithPath: "/System/Library/Sounds/\(newValue).aiff")
+                NSSound(contentsOf: url, byReference: false)?.play()
+            }
+
+            Button {
+                let url = URL(fileURLWithPath: "/System/Library/Sounds/\(selection.wrappedValue).aiff")
+                NSSound(contentsOf: url, byReference: false)?.play()
+            } label: {
+                Image(systemName: "play.circle")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Preview sound")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
     // MARK: - Options
 
     private var optionsSection: some View {
@@ -340,11 +405,11 @@ struct SettingsCard<Content: View>: View {
     var body: some View {
         content
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: DS.radiusCard, style: .continuous)
                     .fill(Color(NSColor.controlBackgroundColor))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: DS.radiusCard, style: .continuous)
                     .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
             )
     }
@@ -361,7 +426,7 @@ struct KeyBadge: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: DS.radiusPill, style: .continuous)
                     .fill(Color(NSColor.unemphasizedSelectedContentBackgroundColor))
             )
     }

@@ -8,7 +8,7 @@ struct HomeView: View {
 
                 Image(systemName: "mic.fill")
                     .font(.system(size: 48))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(DS.primary)
 
                 VStack(spacing: 6) {
                     Text("FindMyVoice")

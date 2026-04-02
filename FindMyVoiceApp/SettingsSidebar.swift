@@ -5,7 +5,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case modes = "Modes"
     case vocabulary = "Vocabulary"
     case configuration = "Configuration"
-    case sound = "Sound"
     case modelsLibrary = "Models Library"
     case history = "History"
 
@@ -17,7 +16,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .modes: return "square.grid.2x2"
         case .vocabulary: return "text.book.closed"
         case .configuration: return "gearshape.fill"
-        case .sound: return "speaker.wave.2.fill"
         case .modelsLibrary: return "cpu"
         case .history: return "clock"
         }
@@ -25,13 +23,12 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var iconColor: Color {
         switch self {
-        case .home: return .orange
-        case .modes: return .blue
-        case .vocabulary: return .green
-        case .configuration: return .gray
-        case .sound: return .pink
-        case .modelsLibrary: return .purple
-        case .history: return .teal
+        case .home:          return DS.tertiary
+        case .modes:         return DS.primary
+        case .vocabulary:    return .green
+        case .configuration: return DS.neutral
+        case .modelsLibrary: return DS.secondary
+        case .history:       return .teal
         }
     }
 }
@@ -51,10 +48,10 @@ struct SettingsSidebar: View {
                         .foregroundStyle(tab.iconColor)
                         .frame(width: 28, height: 28)
                         .background(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            RoundedRectangle(cornerRadius: DS.radiusSidebar, style: .continuous)
                                 .fill(tab.iconColor.opacity(0.15))
                         )
-                        .glassEffect(.regular.tint(tab.iconColor.opacity(0.3)), in: .rect(cornerRadius: 9))
+                        .glassEffect(.regular.tint(tab.iconColor.opacity(0.3)), in: .rect(cornerRadius: DS.radiusSidebar))
                 }
                 .tag(tab)
                 .padding(.vertical, 2)

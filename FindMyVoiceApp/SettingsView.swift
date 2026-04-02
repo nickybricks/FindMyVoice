@@ -47,8 +47,6 @@ struct SettingsView: View {
             VocabularyView()
         case .configuration:
             ConfigurationView(config: $config, onSave: saveConfig)
-        case .sound:
-            SoundSettingsView(config: $config, onSave: saveConfig)
         case .modelsLibrary:
             ModelsLibraryView(
                 config: $config,

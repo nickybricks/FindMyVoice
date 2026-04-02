@@ -1,5 +1,7 @@
 import SwiftUI
 import Carbon.HIToolbox
+import AVFoundation
+import ApplicationServices
 import os.log
 
 private let logger = Logger(subsystem: "com.findmyvoice", category: "hotkey")
@@ -22,7 +24,7 @@ struct FindMyVoiceApp: App {
                     Divider()
                     Label("NeMo not installed — reinstall via Settings", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(DS.tertiary)
                         .padding(.horizontal, 8)
                 }
 
@@ -86,11 +88,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     func applicationDidFinishLaunching(_ notification: Notification) {
         logger.info("applicationDidFinishLaunching — starting setup")
         AppDelegate.shared = self
+        requestPermissions()
         startBackend()
         loadHotkeyFromConfig()
         installHotkeyMonitor()
         startStatusPolling()
         logger.info("applicationDidFinishLaunching — setup complete")
+    }
+
+    private func requestPermissions() {
+        // Microphone — triggers the system dialog on first run
+        AVCaptureDevice.requestAccess(for: .audio) { granted in
+            logger.info("Microphone permission: \(granted ? "granted" : "denied")")
+        }
+
+        // Accessibility — required to paste transcriptions into other apps
+        // Passing the prompt option opens System Settings if not yet trusted
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        let trusted = AXIsProcessTrustedWithOptions(options)
+        logger.info("Accessibility trusted: \(trusted)")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
