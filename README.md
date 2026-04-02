@@ -25,9 +25,22 @@ make install
 ## Usage
 
 1. The app lives in your menu bar (mic icon).
-2. Press **F5** (default) to start recording.
-3. Press **F5** again to stop — audio is transcribed and pasted into the active app.
-4. Open **Settings** from the menu bar icon to configure hotkey, API, sounds, etc.
+2. Press **⌘⇧F5** (default) to start recording.
+3. Press the same shortcut again to stop — audio is transcribed and pasted into the active app.
+4. Press **Escape** to cancel a recording in progress.
+5. Open **Settings** from the menu bar icon to configure shortcuts, API, sounds, and more.
+
+### Keyboard Shortcuts
+
+All shortcuts are fully configurable with modifier keys (⌘, ⇧, ⌥, ⌃) in Settings:
+
+| Action | Default Shortcut |
+|--------|-----------------|
+| Toggle recording | ⌘⇧F5 |
+| Cancel recording | Escape |
+| Change mode | ⌥⇧K |
+| Push to talk | (unset) |
+| Mouse shortcut | (unset) |
 
 ### Local Transcription (NeMo)
 
@@ -45,9 +58,17 @@ FindMyVoice/
 │   └── setup.sh
 ├── FindMyVoiceApp/           # SwiftUI macOS app
 │   ├── FindMyVoiceApp.swift
-│   ├── SettingsView.swift
+│   ├── Models.swift
 │   ├── APIClient.swift
-│   └── Models.swift
+│   ├── SettingsView.swift
+│   ├── SettingsSidebar.swift
+│   ├── ConfigurationView.swift
+│   ├── HomeView.swift
+│   ├── HistoryView.swift
+│   ├── ModesView.swift
+│   ├── ModelsLibraryView.swift
+│   ├── SoundSettingsView.swift
+│   └── VocabularyView.swift
 ├── FindMyVoice.xcodeproj/
 ├── Makefile
 └── README.md

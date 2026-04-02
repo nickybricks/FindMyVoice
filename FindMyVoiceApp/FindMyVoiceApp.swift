@@ -72,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var hotkeyRef: EventHotKeyRef?
     @Published var isRecording = false
 
-    private var currentHotkey: String = "f5"
+    private var currentShortcut: HotkeyCombo = .defaultToggleRecording
     private var statusTimer: Timer?
     private var lastHotkeyTime: Date = .distantPast
 
@@ -102,20 +102,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     // MARK: - Global hotkey (Carbon RegisterEventHotKey)
 
     private func loadHotkeyFromConfig() {
-        logger.info("loadHotkeyFromConfig — current default is '\(self.currentHotkey)'")
+        logger.info("loadHotkeyFromConfig — current default is '\(self.currentShortcut.key)'")
         Task {
             if let config = try? await APIClient.shared.fetchConfig() {
-                let newHotkey = config.hotkey
-                logger.info("Config loaded — hotkey: '\(newHotkey)'")
+                let newShortcut = config.toggleRecording
+                logger.info("Config loaded — shortcut: '\(newShortcut.key)' modifiers: \(newShortcut.modifiers)")
                 await MainActor.run {
-                    if self.currentHotkey != newHotkey {
-                        self.currentHotkey = newHotkey
+                    if self.currentShortcut != newShortcut {
+                        self.currentShortcut = newShortcut
                         self.unregisterHotkey()
                         self.registerHotkey()
                     }
                 }
             } else {
-                logger.warning("Failed to load config — sticking with default '\(self.currentHotkey)'")
+                logger.warning("Failed to load config — sticking with default '\(self.currentShortcut.key)'")
             }
         }
     }
@@ -179,12 +179,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     private func registerHotkey() {
-        let keyCode = AppDelegate.keyCodeForHotkey(currentHotkey)
+        guard !currentShortcut.isEmpty else {
+            logger.info("No toggle recording shortcut configured — skipping registration")
+            return
+        }
+        // Use stored keyCode directly (layout-independent) with fallback to name mapping
+        let keyCode: UInt16 = currentShortcut.keyCode >= 0
+            ? UInt16(currentShortcut.keyCode)
+            : AppDelegate.keyCodeForKey(currentShortcut.key)
+        let modifierMask = AppDelegate.carbonModifiers(from: currentShortcut.modifiers)
         var hotkeyID = AppDelegate.hotkeyID
         var ref: EventHotKeyRef?
 
         let status = RegisterEventHotKey(UInt32(keyCode),
-                                          0, // no modifiers
+                                          modifierMask,
                                           hotkeyID,
                                           GetApplicationEventTarget(),
                                           0,
@@ -192,7 +200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         if status == noErr {
             hotkeyRef = ref
-            logger.info("Registered hotkey '\(self.currentHotkey)' (keyCode=\(keyCode)) — no modifiers")
+            logger.info("Registered hotkey '\(self.currentShortcut.key)' modifiers=\(self.currentShortcut.modifiers) (keyCode=\(keyCode), mask=\(modifierMask))")
         } else {
             logger.error("RegisterEventHotKey failed: \(status)")
         }
@@ -224,22 +232,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
 
-    private static func keyCodeForHotkey(_ name: String) -> UInt16 {
+    static func keyCodeForKey(_ name: String) -> UInt16 {
         switch name.lowercased() {
-        case "f1":  return UInt16(kVK_F1)
-        case "f2":  return UInt16(kVK_F2)
-        case "f3":  return UInt16(kVK_F3)
-        case "f4":  return UInt16(kVK_F4)
-        case "f5":  return UInt16(kVK_F5)
-        case "f6":  return UInt16(kVK_F6)
-        case "f7":  return UInt16(kVK_F7)
-        case "f8":  return UInt16(kVK_F8)
-        case "f9":  return UInt16(kVK_F9)
-        case "f10": return UInt16(kVK_F10)
-        case "f11": return UInt16(kVK_F11)
-        case "f12": return UInt16(kVK_F12)
-        default:    return UInt16(kVK_F1)
+        case "f1":     return UInt16(kVK_F1)
+        case "f2":     return UInt16(kVK_F2)
+        case "f3":     return UInt16(kVK_F3)
+        case "f4":     return UInt16(kVK_F4)
+        case "f5":     return UInt16(kVK_F5)
+        case "f6":     return UInt16(kVK_F6)
+        case "f7":     return UInt16(kVK_F7)
+        case "f8":     return UInt16(kVK_F8)
+        case "f9":     return UInt16(kVK_F9)
+        case "f10":    return UInt16(kVK_F10)
+        case "f11":    return UInt16(kVK_F11)
+        case "f12":    return UInt16(kVK_F12)
+        case "escape": return UInt16(kVK_Escape)
+        case "space":  return UInt16(kVK_Space)
+        case "tab":    return UInt16(kVK_Tab)
+        case "return": return UInt16(kVK_Return)
+        case "delete": return UInt16(kVK_Delete)
+        case "a": return UInt16(kVK_ANSI_A)
+        case "b": return UInt16(kVK_ANSI_B)
+        case "c": return UInt16(kVK_ANSI_C)
+        case "d": return UInt16(kVK_ANSI_D)
+        case "e": return UInt16(kVK_ANSI_E)
+        case "f": return UInt16(kVK_ANSI_F)
+        case "g": return UInt16(kVK_ANSI_G)
+        case "h": return UInt16(kVK_ANSI_H)
+        case "i": return UInt16(kVK_ANSI_I)
+        case "j": return UInt16(kVK_ANSI_J)
+        case "k": return UInt16(kVK_ANSI_K)
+        case "l": return UInt16(kVK_ANSI_L)
+        case "m": return UInt16(kVK_ANSI_M)
+        case "n": return UInt16(kVK_ANSI_N)
+        case "o": return UInt16(kVK_ANSI_O)
+        case "p": return UInt16(kVK_ANSI_P)
+        case "q": return UInt16(kVK_ANSI_Q)
+        case "r": return UInt16(kVK_ANSI_R)
+        case "s": return UInt16(kVK_ANSI_S)
+        case "t": return UInt16(kVK_ANSI_T)
+        case "u": return UInt16(kVK_ANSI_U)
+        case "v": return UInt16(kVK_ANSI_V)
+        case "w": return UInt16(kVK_ANSI_W)
+        case "x": return UInt16(kVK_ANSI_X)
+        case "y": return UInt16(kVK_ANSI_Y)
+        case "z": return UInt16(kVK_ANSI_Z)
+        case "0": return UInt16(kVK_ANSI_0)
+        case "1": return UInt16(kVK_ANSI_1)
+        case "2": return UInt16(kVK_ANSI_2)
+        case "3": return UInt16(kVK_ANSI_3)
+        case "4": return UInt16(kVK_ANSI_4)
+        case "5": return UInt16(kVK_ANSI_5)
+        case "6": return UInt16(kVK_ANSI_6)
+        case "7": return UInt16(kVK_ANSI_7)
+        case "8": return UInt16(kVK_ANSI_8)
+        case "9": return UInt16(kVK_ANSI_9)
+        default:
+            // Try parsing as a raw keyCode number
+            if let code = UInt16(name) { return code }
+            return UInt16(kVK_F1)
         }
+    }
+
+    static func carbonModifiers(from modifiers: [String]) -> UInt32 {
+        var mask: UInt32 = 0
+        for mod in modifiers {
+            switch mod {
+            case "command": mask |= UInt32(cmdKey)
+            case "shift":   mask |= UInt32(shiftKey)
+            case "option":  mask |= UInt32(optionKey)
+            case "control": mask |= UInt32(controlKey)
+            default: break
+            }
+        }
+        return mask
     }
 
     // MARK: - Status polling
@@ -254,8 +320,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 // Also refresh hotkey in case user changed it in settings
                 if let config = try? await APIClient.shared.fetchConfig() {
                     await MainActor.run {
-                        if self.currentHotkey != config.hotkey {
-                            self.currentHotkey = config.hotkey
+                        if self.currentShortcut != config.toggleRecording {
+                            self.currentShortcut = config.toggleRecording
                             self.unregisterHotkey()
                             self.registerHotkey()
                         }

@@ -7,6 +7,7 @@ handled by the Swift app.
 """
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -33,12 +34,16 @@ DEFAULT_CONFIG: dict = {
     "openai_model": "whisper-1",
     "openai_language": "auto",
     "nemo_language": "auto",
-    "hotkey": "f1",
     "sound_start": "Tink",
     "sound_stop": "Pop",
     "auto_paste": True,
     "auto_capitalize": True,
     "auto_punctuate": True,
+    "toggle_recording": {"key": "f5", "key_code": 96, "modifiers": ["command", "shift"]},
+    "cancel_recording": {"key": "escape", "key_code": 53, "modifiers": []},
+    "change_mode": {"key": "k", "key_code": 40, "modifiers": ["option", "shift"]},
+    "push_to_talk": {"key": "", "key_code": -1, "modifiers": []},
+    "mouse_shortcut": {"key": "", "key_code": -1, "modifiers": []},
 }
 
 
@@ -65,6 +70,16 @@ def _migrate(cfg: dict) -> tuple[dict, bool]:
         if "openai_language" not in cfg:
             cfg["openai_language"] = old_lang
         cfg.setdefault("nemo_language", "auto")
+        changed = True
+
+    # migrate old "hotkey" → "toggle_recording"
+    if "hotkey" in cfg and "toggle_recording" not in cfg:
+        old_hk = cfg.pop("hotkey")
+        if old_hk:
+            cfg["toggle_recording"] = {"key": old_hk, "modifiers": []}
+        changed = True
+    elif "hotkey" in cfg:
+        cfg.pop("hotkey")
         changed = True
 
     # remove obsolete fields
@@ -125,14 +140,21 @@ def paste_text(text: str) -> None:
     process = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE)
     process.communicate(text.encode("utf-8"))
 
-    subprocess.run(
+    import time
+    time.sleep(0.05)  # brief pause to ensure clipboard is ready
+
+    result = subprocess.run(
         [
             "osascript",
             "-e",
             'tell application "System Events" to keystroke "v" using command down',
         ],
-        check=False,
+        capture_output=True,
+        text=True,
     )
+    if result.returncode != 0:
+        logging.error("Auto-paste failed (osascript exit %d): %s", result.returncode, result.stderr.strip())
+        logging.error("Ensure FindMyVoice has Accessibility permission in System Settings → Privacy & Security → Accessibility")
 
 
 def post_process(text: str) -> str:

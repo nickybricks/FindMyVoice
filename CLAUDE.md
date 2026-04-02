@@ -3,11 +3,6 @@
 ## What This Is
 A lightweight macOS SuperWhisper clone — global hotkey voice-to-text that pastes into any active app. Python backend + native SwiftUI frontend.
 
-## Architecture
-- **Backend**: Python 3.10+ script (`backend/findmyvoice_core.py`) handles audio recording, Whisper API transcription, clipboard paste, and exposes a local HTTP API on `localhost:7890`
-- **Frontend**: Native SwiftUI macOS app with MenuBarExtra for menu bar presence and a Settings window. Communicates with backend via HTTP.
-- **Config**: JSON file at `~/.findmyvoice/config.json`
-
 ## Git Push & Release Workflow
 
 When asked to push to GitHub, follow this exact process:
@@ -65,48 +60,6 @@ gh release create v{VERSION} --title "v{VERSION}: {Brief description}" --notes "
 - Include a `## Changes` section with bullet points summarizing what changed
 - The release title should match the commit message format: `v{VERSION}: {Brief description}`
 
-
-## Build & Install
-
-After any Swift code change, the app must be rebuilt and reinstalled:
-
-```bash
-make install
-```
-
-This builds a Release binary and copies it to `/Applications/FindMyVoice.app`, replacing any existing version.
-
-After running `make install`:
-1. Quit the running app (click the menu bar icon → Quit)
-2. Relaunch from `/Applications/FindMyVoice.app`
-
-Do **not** run the app directly from the Xcode build folder — always use the installed copy in `/Applications`.
-
-## Tech Stack
-- Python: sounddevice, numpy, scipy, openai, flask
-- Swift: SwiftUI, MenuBarExtra (macOS 14+)
-- Build: Makefile, xcodebuild
-
-## Project Structure
-```
-FindMyVoice/
-├── backend/
-│   ├── findmyvoice_core.py
-│   ├── requirements.txt
-│   └── setup.sh
-├── FindMyVoiceApp/
-│   ├── FindMyVoiceApp.swift
-│   ├── SettingsView.swift
-│   ├── APIClient.swift
-│   ├── Models.swift
-│   └── Assets.xcassets/
-├── FindMyVoice.xcodeproj/
-├── README.md
-├── Makefile
-├── tasks/
-│   └── todo.md
-└── CLAUDE.md
-```
 
 ## Code Style
 - Python: simple, minimal, no classes unless necessary. Use type hints.
